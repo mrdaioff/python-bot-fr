@@ -14,6 +14,9 @@ Per_Refer = 2000  # add per referral bonus here
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# Define a temporary storage for users setting up their withdrawal accounts
+awaiting_withdrawal_setup = {}
+
 def check(id):
     for i in CHANNELS:
         check = bot.get_chat_member(i, id)
@@ -28,8 +31,8 @@ bonus = {}
 def menu(id):
     keyboard = telebot.types.ReplyKeyboardMarkup(True)
     keyboard.row('🆔 Mon Compte')
-    keyboard.row('🙌🏻 Invités', '🎁 Bonus', '💸 Retirer')
-    keyboard.row('⚙️ Configurer le portefeuille', '📊 Statistiques')
+    keyboard.row('🙌🏻 Invités', '🎁 Bonus Quotidien', '💸 Retirer')
+    keyboard.row('⚙️ Configurer le compte de Retrait', '📊 Statistiques')
     bot.send_message(id, "*🏡 Accueil*", parse_mode="Markdown", reply_markup=keyboard)
 
 @bot.message_handler(commands=['start'])
@@ -51,8 +54,9 @@ def start(message):
                 data['DailyQuiz'][user] = "0"
             if user not in data['balance']:
                 data['balance'][user] = 0
+            # Change here from "none" to "aucun"
             if user not in data['wallet']:
-                data['wallet'][user] = "none"
+                data['wallet'][user] = "aucun"
             if user not in data['withd']:
                 data['withd'][user] = 0
             if user not in data['id']:
@@ -82,8 +86,9 @@ def start(message):
                 data['DailyQuiz'][user] = 0
             if user not in data['balance']:
                 data['balance'][user] = 0
+            # Change here from "none" to "aucun"
             if user not in data['wallet']:
-                data['wallet'][user] = "none"
+                data['wallet'][user] = "aucun"
             if user not in data['withd']:
                 data['withd'][user] = 0
             if user not in data['id']:
@@ -124,9 +129,9 @@ def query_handler(call):
                         if ref not in data['referred']:
                             data['referred'][ref] = 0
                         data['balance'][ref] += Per_Refer
-                        data['referred'][ref] += 1
+                        data['referred'][ref] += 1  # Increment the referrer's count
                         bot.send_message(ref_id, f"*🏧 Nouvelle Référence au Niveau 1, Vous Avez : +{Per_Refer} {TOKEN}*", parse_mode="Markdown")
-                        json.dump(data, open('users.json', 'w'))
+                        json.dump(data, open('users.json', 'w'))  # Save after updates
                         return menu(call.message.chat.id)
                     else:
                         json.dump(data, open('users.json', 'w'))
@@ -151,14 +156,15 @@ def send_text(message):
     try:
         if message.text == '🆔 Mon Compte':
             data = json.load(open('users.json', 'r'))
-            accmsg = '*👮 Utilisateur : {}\n\n⚙️ Portefeuille : *{}*\n\n💸 Solde : *{}* {}*'
+            accmsg = '*👮 Utilisateur : {}\n\n⚙️ Compte : *{}*\n\n💸 Solde : *{}* {}*'
             user_id = message.chat.id
             user = str(user_id)
 
             if user not in data['balance']:
                 data['balance'][user] = 0
+            # Change here from "none" to "aucun"
             if user not in data['wallet']:
-                data['wallet'][user] = "none"
+                data['wallet'][user] = "aucun"
 
             json.dump(data, open('users.json', 'w'))
 
@@ -178,63 +184,92 @@ def send_text(message):
                 data['referred'][user] = 0
             json.dump(data, open('users.json', 'w'))
 
-            ref_count = data['referred'][user]
-            ref_link = f"https://t.me/{bot_name}?start={user}"
-            msg = ref_msg.format(data['total'], ref_count, TOKEN, ref_link)
+            total_ref = data['referred'][user]
+            ref_link = f"https://t.me/{bot_name}?start={user_id}"
+            msg = ref_msg.format(total_ref, total_ref, TOKEN, ref_link)
             bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
-        elif message.text == '🎁 Bonus':
+        elif message.text == '🎁 Bonus Quotidien':
+            user_id = message.chat.id
+            data = json.load(open('users.json', 'r'))
             user_id = message.chat.id
             user = str(user_id)
-            data = json.load(open('users.json', 'r'))
-            if user not in bonus:
-                bonus[user] = 0
-            if data['checkin'][user] == 0:
-                data['checkin'][user] += 1
-                data['balance'][user] += Daily_bonus
-                bot.send_message(user_id, f"*✅ Vous avez réclamé votre bonus quotidien de {Daily_bonus} {TOKEN}*",
-                                 parse_mode="Markdown")
-                json.dump(data, open('users.json', 'w'))
+            if user not in data['checkin']:
+                data['checkin'][user] = 0
+            if data['checkin'][user] == 1:
+                bot.send_message(user_id, "❌ Vous avez déjà pris votre bonus quotidien aujourd'hui.")
             else:
-                bot.send_message(user_id, "*❌ Vous avez déjà réclamé votre bonus quotidien.*", parse_mode="Markdown")
+                data['balance'][user] += Daily_bonus
+                data['checkin'][user] = 1
+                bot.send_message(user_id, f"✅ Vous avez reçu votre bonus quotidien de {Daily_bonus} {TOKEN}.")
+            json.dump(data, open('users.json', 'w'))
 
         elif message.text == '💸 Retirer':
             data = json.load(open('users.json', 'r'))
-            user = str(message.chat.id)
+            user_id = message.chat.id
+            user = str(user_id)
             if user not in data['balance']:
                 data['balance'][user] = 0
-            if user not in data['withd']:
-                data['withd'][user] = 0
-            json.dump(data, open('users.json', 'w'))
-            if data['balance'][user] >= Mini_Withdraw:
-                bot.send_message(user, "*⚠️ Veuillez entrer votre adresse de portefeuille pour le retrait.*",
-                                 parse_mode="Markdown")
-            else:
-                bot.send_message(user, f"*❌ Votre solde est insuffisant pour retirer. Solde actuel : {data['balance'][user]} {TOKEN}*", parse_mode="Markdown")
-
-        elif message.text == '⚙️ Configurer le portefeuille':
-            data = json.load(open('users.json', 'r'))
-            user = str(message.chat.id)
             if user not in data['wallet']:
-                data['wallet'][user] = "none"
-            json.dump(data, open('users.json', 'w'))
-            if data['wallet'][user] == "none":
-                bot.send_message(user, "*⚙️ Veuillez entrer votre adresse de portefeuille pour configurer.*",
-                                 parse_mode="Markdown")
+                data['wallet'][user] = "aucun"
+            balance = data['balance'][user]
+            wallet = data['wallet'][user]
+            if balance < Mini_Withdraw:
+                bot.send_message(user_id, f"❌ Votre solde est de *{balance}* {TOKEN}.\n\nLe montant minimum de retrait est de *{Mini_Withdraw}* {TOKEN}.", parse_mode="Markdown")
             else:
-                bot.send_message(user, f"*🛠️ Votre portefeuille est déjà configuré : {data['wallet'][user]}*", parse_mode="Markdown")
+                bot.send_message(user_id, "🏦 Entrez le montant à retirer.")
 
         elif message.text == '📊 Statistiques':
+            user_id = message.chat.id
             data = json.load(open('users.json', 'r'))
-            user = str(message.chat.id)
-            total_user = data['total']
-            total_refer = data['referred'][user] if user in data['referred'] else 0
-            total_balance = data['balance'][user] if user in data['balance'] else 0
-            msg = f"*📈 Statistiques du bot :*\n\n*👥 Total d'utilisateurs : {total_user}*\n*🎖️ Vos références : {total_refer}*\n*💰 Votre solde : {total_balance} {TOKEN}*"
-            bot.send_message(user, msg, parse_mode="Markdown")
+
+            # Get the number of referrals for the user
+            if user_id not in data['referred']:
+                data['referred'][user_id] = 0  # Ensure the user is initialized
+            user_referrals = data['referred'][user_id]  # Get user's referrals
+
+            # Total balance is the same as before
+            total_balance = sum(data['balance'].values())
+
+            # Construct the message to send
+            msg = f"*📈 Statistiques :*\n\n*Nombre de Références : {user_referrals}*\n*Total de solde : {total_balance} {TOKEN}*"
+            bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+
+        elif message.text == '⚙️ Configurer le compte de Retrait':
+            user_id = message.chat.id
+            data = json.load(open('users.json', 'r'))
+            if user_id not in data['wallet']:
+                data['wallet'][user_id] = "aucun"
+                
+            # Notify user to enter their account details
+            msg = "*💼 Quel est votre compte ?*\n\n*Exemple : Moov Money 229 98 76 54 32*"
+            bot.send_message(user_id, msg, parse_mode="Markdown")
+            
+            # Set the state for awaiting input
+            awaiting_withdrawal_setup[user_id] = True
+            
+            # New handler for capturing user input for withdrawal account setup
+        elif message.chat.id in awaiting_withdrawal_setup:
+            user_id = message.chat.id
+            account_info = message.text.strip()
+            
+            # Save the account information to the user's wallet
+            data = json.load(open('users.json', 'r'))
+            data['wallet'][user_id] = account_info  # Save the account info
+
+            # Inform the user that their account has been set
+            bot.send_message(user_id, f"*✅ Votre compte de retrait a été configuré : {account_info}*", parse_mode="Markdown")
+            
+            # Clean up the temporary state
+            del awaiting_withdrawal_setup[user_id]
+
+            # Save updated data
+            json.dump(data, open('users.json', 'w'))
 
     except Exception as e:
         bot.send_message(message.chat.id, "Cette commande a rencontré une erreur, veuillez attendre que l'administrateur résolve le problème.")
-        bot.send_message(OWNER_ID, f"Votre bot a rencontré une erreur : {str(e)}\nMessage : {message.text}")
+        bot.send_message(OWNER_ID, f"Votre bot a rencontré une erreur : {str(e)}\nDonnées du message : {message.text}")
+        return
 
-bot.polling(none_stop=True)
+# Start the bot
+bot.polling()
